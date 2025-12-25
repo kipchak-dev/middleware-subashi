@@ -319,6 +319,7 @@ class Firewall
     private function blockRequest(): ResponseInterface
     {
         $response = new Response();
+        $response = $response->withAddedHeader('X-Protected-By', 'Subashi by Mamluk');
         $message = $this->config['blocked_response_message'] ?? 'Access Denied';
         $code = $this->config['blocked_response_code'] ?? 403;
 
@@ -331,6 +332,7 @@ class Firewall
     private function rateLimitResponse(): ResponseInterface
     {
         $response = new Response();
+        $response = $response->withAddedHeader('X-Protected-By', 'Subashi by Mamluk');
         return Http\Response::json($response, 'Rate limit exceeded', 429);
     }
 }
