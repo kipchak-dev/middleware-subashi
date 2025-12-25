@@ -1,11 +1,8 @@
 <?php
 
-namespace Kipchak\Middleware\Auth;
+namespace Kipchak\Middleware\Subashi;
 
 use Kipchak\Core\Interfaces;
-use Kipchak\Driver\Config\Config;
-use Kipchak\Middleware\Auth\Handlers\AuthJwks;
-use Kipchak\Middleware\Auth\Handlers\AuthKey;
 use Kipchak\Middleware\Subashi\Handlers\Firewall;
 use Slim\App;
 

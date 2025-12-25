@@ -6,7 +6,6 @@ use Kipchak\Core\Components\Http;
 use Kipchak\Driver\Config\Config;
 use Kipchak\Driver\Filecache\Filecache;
 use Kipchak\Driver\Memcached\Memcached;
-use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
