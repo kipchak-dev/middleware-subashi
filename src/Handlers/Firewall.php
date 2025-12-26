@@ -11,22 +11,30 @@ use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Slim\Psr7\Response;
 use Symfony\Component\Cache\Adapter\AdapterInterface;
+use Kipchak\Driver\Logger\Logger;
+use Monolog\Logger as MonoLogger;
 
 class Firewall
 {
     private array $config;
     private ?AdapterInterface $cache = null;
 
+    private MonoLogger $logger;
+
     public function __construct()
     {
         // Load configuration from container
         $this->config = Config::get('kipchak.subashi') ?? [];
+        $this->logger = Logger::get();
 
         // Initialize cache if rate limiting is enabled
         if ($this->config['rate_limiting']['enabled']) {
+            $this->logger->debug('Rate limiting is enabled.');
             if ($this->config['rate_limiting']['store'] === 'memcached') {
+                $this->logger->debug('Using Memcached as rate limiting cache store.');
                 $this->cache = Memcached::get('cache');
             } else {
+                $this->logger->debug('Using Filecache as rate limiting cache store.');
                 $this->cache = Filecache::get();
             }
         }
@@ -230,7 +238,7 @@ class Firewall
      */
     private function isRateLimited(ServerRequestInterface $request): bool
     {
-        if (!$this->cache || !($this->config['rate_limiting']['enabled'] ?? false)) {
+        if (!$this->cache || !($this->config['rate_limiting']['enabled'])) {
             return false;
         }
 
@@ -249,6 +257,7 @@ class Firewall
                 $keySource = $rateLimitConfig['key_source'] ?? 'ip';
 
                 $key = $this->buildRateLimitKey($request, $keyPrefix, $keySource);
+                $this->logger->debug("Checking rate limit for key: {$key}");
 
                 if ($this->checkRateLimit($key, $limit, $window)) {
                     return true;
@@ -293,10 +302,12 @@ class Firewall
             $cacheItem = $this->cache->getItem($key);
 
             if ($cacheItem->isHit()) {
+                $this->logger->debug("Rate limit cache hit for key: {$key}");
                 $data = $cacheItem->get();
                 $count = $data['count'] ?? 0;
 
                 if ($count >= $limit) {
+                    $this->logger->debug("Rate limit exceeded for key: {$key}");
                     return true; // Rate limited
                 }
 
@@ -304,6 +315,7 @@ class Firewall
                 $cacheItem->set($data);
                 $this->cache->save($cacheItem);
             } else {
+                $this->logger->debug("Rate limit cache miss for key: {$key}");
                 // First request in this window
                 $cacheItem->set(['count' => 1]);
                 $cacheItem->expiresAfter($window);

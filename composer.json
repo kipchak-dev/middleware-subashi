@@ -30,7 +30,6 @@
         "kipchak/driver-config": "dev-master",
         "kipchak/driver-logger": "dev-master",
         "kipchak/driver-memcached": "dev-master",
-        "kipchak/driver-filecache": "dev-master"
-
+        "kipchak/driver-filecache": "dev-master",
     }
 }
