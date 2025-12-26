@@ -289,6 +289,8 @@ class Firewall
             $params = $request->getQueryParams();
             $identifier = $params[$paramName] ?? 'unknown';
         }
+        // MD5 so that we don't have to worry about collisions or spaces in identifiers like 'user id: 123'
+        $identifier = md5($identifier);
 
         return "waf_ratelimit_{$prefix}_{$identifier}";
     }
