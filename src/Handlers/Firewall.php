@@ -257,7 +257,7 @@ class Firewall
                 $keySource = $rateLimitConfig['key_source'] ?? 'ip';
 
                 $key = $this->buildRateLimitKey($request, $keyPrefix, $keySource);
-                $this->logger->debug("Checking rate limit for key: {$key}");
+                $this->logger->debug("Checking rate limit for key: {$key}. Limit: {$limit}, Window: {$window}");
 
                 if ($this->checkRateLimit($key, $limit, $window)) {
                     return true;
@@ -305,6 +305,7 @@ class Firewall
                 $this->logger->debug("Rate limit cache hit for key: {$key}");
                 $data = $cacheItem->get();
                 $count = $data['count'] ?? 0;
+                $this->logger->debug("Current count: {$count}");
 
                 if ($count >= $limit) {
                     $this->logger->debug("Rate limit exceeded for key: {$key}");
