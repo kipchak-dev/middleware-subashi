@@ -23,8 +23,12 @@ class Firewall
         $this->config = Config::get('kipchak.subashi') ?? [];
 
         // Initialize cache if rate limiting is enabled
-        if ($this->config['rate_limiting']['enabled'] ?? false) {
-            $this->cache = Memcached::get('cache') ?? Filecache::get();
+        if ($this->config['rate_limiting']['enabled']) {
+            if ($this->config['rate_limiting']['store'] === 'memcached') {
+                $this->cache = Memcached::get('cache');
+            } else {
+                $this->cache = Filecache::get();
+            }
         }
     }
 
