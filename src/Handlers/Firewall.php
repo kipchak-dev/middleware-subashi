@@ -307,7 +307,7 @@ class Firewall
                 $count = $data['count'] ?? 0;
                 $this->logger->debug("Current count: {$count}");
 
-                if ($count >= $limit) {
+                if ($count > $limit) {
                     $this->logger->debug("Rate limit exceeded for key: {$key}");
                     return true; // Rate limited
                 }
