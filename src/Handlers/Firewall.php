@@ -305,20 +305,34 @@ class Firewall
                 $this->logger->debug("Rate limit cache hit for key: {$key}");
                 $data = $cacheItem->get();
                 $count = $data['count'] ?? 0;
+                $windowStart = $data['window_start'] ?? time();
                 $this->logger->debug("Current count: {$count}");
 
-                if ($count > $limit) {
-                    $this->logger->debug("Rate limit exceeded for key: {$key}");
-                    return true; // Rate limited
-                }
+                // Check if we're still within the same window
+                $currentTime = time();
+                if (($currentTime - $windowStart) >= $window) {
+                    // Window has expired, start a new one
+                    $this->logger->debug("Rate limit window expired for key: {$key}, starting new window");
+                    $cacheItem->set(['count' => 1, 'window_start' => $currentTime]);
+                    $cacheItem->expiresAfter($window);
+                    $this->cache->save($cacheItem);
+                } else {
+                    // Still within the same window
+                    if ($count >= $limit) {
+                        $this->logger->debug("Rate limit exceeded for key: {$key}");
+                        return true; // Rate limited
+                    }
 
-                $data['count'] = $count + 1;
-                $cacheItem->set($data);
-                $this->cache->save($cacheItem);
+                    $data['count'] = $count + 1;
+                    $remainingTtl = $window - ($currentTime - $windowStart);
+                    $cacheItem->set($data);
+                    $cacheItem->expiresAfter($remainingTtl);
+                    $this->cache->save($cacheItem);
+                }
             } else {
                 $this->logger->debug("Rate limit cache miss for key: {$key}");
                 // First request in this window
-                $cacheItem->set(['count' => 1]);
+                $cacheItem->set(['count' => 1, 'window_start' => time()]);
                 $cacheItem->expiresAfter($window);
                 $this->cache->save($cacheItem);
             }
