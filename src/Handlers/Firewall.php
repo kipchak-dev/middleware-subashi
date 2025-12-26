@@ -32,7 +32,7 @@ class Firewall
             $this->logger->debug('Rate limiting is enabled.');
             if ($this->config['rate_limiting']['store'] === 'memcached') {
                 $this->logger->debug('Using Memcached as rate limiting cache store.');
-                $this->cache = Memcached::get('cache');
+                $this->cache = Memcached::get($this->config['rate_limiting']['memcached_pool']);
             } else {
                 $this->logger->debug('Using Filecache as rate limiting cache store.');
                 $this->cache = Filecache::get();
