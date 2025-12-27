@@ -20,7 +20,7 @@ For a sample, please see: https://1x.ax/mamluk/kipchak/starter/~files/master/con
 
 ## What is a Kipchak Middleware?
 
-Kipchak Middleware a standard PHP PSR-15 middleware.
+Kipchak Middleware is a standard PHP PSR-15 middleware.
 
 Middleware is a component that sits between the request and response of a web application, allowing for interception
 and modification of the request and response data. In the context of Kipchak, middleware can be used to handle errors,
