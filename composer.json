@@ -25,7 +25,6 @@
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "firebase/php-jwt": "^7",
         "kipchak/core": "^2",
         "kipchak/driver-config": "^1",
         "kipchak/driver-logger": "^1",
