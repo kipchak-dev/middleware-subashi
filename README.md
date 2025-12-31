@@ -2,9 +2,9 @@
 
 This Middleware package adds WAF capabilities to your Kipchak API.
 
-It's name is inspired by the Arabic word "Subashi" which means "shield" or "protection", reflecting the purpose of the middleware to protect your API from malicious attacks.
+The name is inspired by the Arabic word "Subashi" which means "shield" or "protection", reflecting the purpose of the middleware to protect your API from malicious attacks.
 
-It's actually taken from the Ottoman Turkish *subaşı*, which was title given to the police chief of a city / town in the Ottoman Empire.
+It's actually taken from the Ottoman Turkish word *subaşı*, which was the title given to the police chief of a city / town in the Ottoman Empire.
 
 #### Composer Package
 
