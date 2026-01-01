@@ -4,7 +4,7 @@ namespace Kipchak\Middleware\Subashi;
 
 use Kipchak\Core\Interfaces;
 use Kipchak\Middleware\Subashi\Handlers\Firewall;
-use Slim\App;
+use Kipchak\Core\Components\App;
 
 class Subashi implements Interfaces\Middleware
 {
