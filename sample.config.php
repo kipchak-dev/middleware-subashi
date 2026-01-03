@@ -55,7 +55,204 @@ return [
     ],
 
     // Blacklist rules - block if ALL conditions in a rule match
+    // Each rule can optionally specify 'response_code' and 'response_message' to override defaults
     'blacklist' => [
+        // ============================================
+        // OWASP TOP 10 SECURITY RULES
+        // ============================================
+
+        // OWASP A01:2021 - Broken Access Control
+        [
+            'name' => 'OWASP A01: Path Traversal Attack',
+            'conditions' => [
+                [
+                    'type' => 'path',
+                    'operator' => 'regex',
+                    'value' => '/\\.\\.\\/|\\.\\.\\\\|%2e%2e%2f|%2e%2e%5c/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 403,
+            'response_message' => 'Path traversal attempt detected',
+        ],
+
+        // OWASP A03:2021 - Injection
+        [
+            'name' => 'OWASP A03: SQL Injection in Query Params',
+            'conditions' => [
+                [
+                    'type' => 'path',
+                    'operator' => 'regex',
+                    'value' => '/(union.*select|select.*from|insert.*into|delete.*from|drop.*table|update.*set|exec.*xp_|execute.*sp_)/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 403,
+            'response_message' => 'SQL injection attempt detected',
+        ],
+        [
+            'name' => 'OWASP A03: Command Injection',
+            'conditions' => [
+                [
+                    'type' => 'path',
+                    'operator' => 'regex',
+                    'value' => '/(\||;|`|\$\(|<\(|>\(|&&|\\n|\\r)/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 403,
+            'response_message' => 'Command injection attempt detected',
+        ],
+        [
+            'name' => 'OWASP A03: LDAP Injection',
+            'conditions' => [
+                [
+                    'type' => 'path',
+                    'operator' => 'regex',
+                    'value' => '/(\*\)|\(\||\)\(|%2a%29|%28%7c|%29%28)/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 403,
+            'response_message' => 'LDAP injection attempt detected',
+        ],
+        [
+            'name' => 'OWASP A03: XPath Injection',
+            'conditions' => [
+                [
+                    'type' => 'path',
+                    'operator' => 'regex',
+                    'value' => '/(\\[|\\]|or\\s+|and\\s+|node\\(\\)|text\\(\\)|parent::|child::)/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 403,
+            'response_message' => 'XPath injection attempt detected',
+        ],
+
+        // OWASP A03:2021 - Cross-Site Scripting (XSS)
+        [
+            'name' => 'OWASP A03: XSS in Query Parameters',
+            'conditions' => [
+                [
+                    'type' => 'path',
+                    'operator' => 'regex',
+                    'value' => '/(<script|javascript:|onerror=|onload=|<iframe|<object|<embed|eval\\()/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 403,
+            'response_message' => 'XSS attempt detected',
+        ],
+
+        // OWASP A05:2021 - Security Misconfiguration
+        [
+            'name' => 'OWASP A05: Sensitive File Access',
+            'conditions' => [
+                [
+                    'type' => 'path',
+                    'operator' => 'regex',
+                    'value' => '/(\\.env|\\.git|\\.ssh|wp-config\\.php|config\\.php|web\\.config|\\.htaccess|\\.htpasswd|passwd|shadow)/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 404,
+            'response_message' => 'Not Found',
+        ],
+
+        // OWASP A06:2021 - Vulnerable and Outdated Components
+        [
+            'name' => 'OWASP A06: Known Vulnerability Scanner',
+            'conditions' => [
+                [
+                    'type' => 'header',
+                    'key' => 'User-Agent',
+                    'operator' => 'regex',
+                    'value' => '/(nikto|sqlmap|nmap|masscan|acunetix|nessus|openvas|metasploit)/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 403,
+            'response_message' => 'Security scanner detected',
+        ],
+
+        // OWASP A08:2021 - Software and Data Integrity Failures
+        [
+            'name' => 'OWASP A08: Null Byte Injection',
+            'conditions' => [
+                [
+                    'type' => 'path',
+                    'operator' => 'regex',
+                    'value' => '/(%00|\\x00|\\0)/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 400,
+            'response_message' => 'Null byte injection detected',
+        ],
+
+        // OWASP A09:2021 - Security Logging and Monitoring Failures
+        [
+            'name' => 'OWASP A09: Log Forging Attempt',
+            'conditions' => [
+                [
+                    'type' => 'path',
+                    'operator' => 'regex',
+                    'value' => '/(%0d|%0a|\\r|\\n|%5cn|%5cr)/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 400,
+            'response_message' => 'Log injection attempt detected',
+        ],
+
+        // OWASP A10:2021 - Server-Side Request Forgery (SSRF)
+        [
+            'name' => 'OWASP A10: SSRF via URL Parameters',
+            'conditions' => [
+                [
+                    'type' => 'path',
+                    'operator' => 'regex',
+                    'value' => '/(localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0|\\[::1\\]|169\\.254\\.|file:\/\/|dict:\/\/|gopher:\/\/)/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 400,
+            'response_message' => 'SSRF attempt detected',
+        ],
+
+        // Additional Common Attack Patterns
+        [
+            'name' => 'Remote File Inclusion (RFI)',
+            'conditions' => [
+                [
+                    'type' => 'path',
+                    'operator' => 'regex',
+                    'value' => '/(http:\/\/|https:\/\/|ftp:\/\/|php:\/\/|data:\/\/|expect:\/\/|input:\/\/)/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 400,
+            'response_message' => 'Remote file inclusion detected',
+        ],
+        [
+            'name' => 'XXE (XML External Entity) Attack',
+            'conditions' => [
+                [
+                    'type' => 'path',
+                    'operator' => 'regex',
+                    'value' => '/(<!DOCTYPE|<!ENTITY|SYSTEM|PUBLIC)/i',
+                ],
+            ],
+            'action' => 'block',
+            'response_code' => 400,
+            'response_message' => 'XXE attack detected',
+        ],
+
+        // ============================================
+        // CUSTOM APPLICATION RULES
+        // ============================================
+
         [
             'name' => 'Block Subang Indonesia',
             'conditions' => [
@@ -63,16 +260,17 @@ return [
                     'type' => 'query_param',
                     'key' => 'city',
                     'operator' => 'equals',
-                    'value' => 'Subang',
+                    'value' => 'SomeCity',
                 ],
                 [
                     'type' => 'query_param',
                     'key' => 'country',
                     'operator' => 'equals',
-                    'value' => 'Indonesia',
+                    'value' => 'SomeCountry',
                 ],
             ],
             'action' => 'block',
+            // Uses default response_code and response_message
         ],
         [
             'name' => 'Block Dart Client',
@@ -85,6 +283,8 @@ return [
                 ],
             ],
             'action' => 'block',
+            'response_code' => 418,
+            'response_message' => 'Unsupported client',
         ],
         [
             'name' => 'Block suspicious user agents',

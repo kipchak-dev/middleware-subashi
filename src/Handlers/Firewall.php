@@ -61,8 +61,9 @@ class Firewall
         }
 
         // Check blacklist - if matched, block the request
-        if ($this->checkBlacklist($request)) {
-            return $this->blockRequest();
+        $blacklistResult = $this->checkBlacklist($request);
+        if ($blacklistResult) {
+            return $this->blockRequest($blacklistResult);
         }
 
         // Check rate limiting
@@ -92,13 +93,18 @@ class Firewall
     /**
      * Check if request matches blacklist rules
      */
-    private function checkBlacklist(ServerRequestInterface $request): bool
+    private function checkBlacklist(ServerRequestInterface $request): bool|array
     {
         $rules = $this->config['blacklist'] ?? [];
 
         foreach ($rules as $rule) {
             if ($this->matchesRule($request, $rule)) {
-                return true;
+                // Return rule details for custom response
+                return [
+                    'matched' => true,
+                    'response_code' => $rule['response_code'] ?? null,
+                    'response_message' => $rule['response_message'] ?? null,
+                ];
             }
         }
 
@@ -349,12 +355,19 @@ class Firewall
     /**
      * Return blocked response
      */
-    private function blockRequest(): ResponseInterface
+    private function blockRequest(array|bool $ruleData = false): ResponseInterface
     {
         $response = new Response();
         $response = $response->withAddedHeader('X-Protected-By', 'Subashi by Mamluk');
-        $message = $this->config['blocked_response_message'] ?? 'Access Denied';
-        $code = $this->config['blocked_response_code'] ?? 403;
+
+        // Use rule-specific response code/message if provided, otherwise use defaults
+        if (is_array($ruleData)) {
+            $code = $ruleData['response_code'] ?? $this->config['blocked_response_code'] ?? 403;
+            $message = $ruleData['response_message'] ?? $this->config['blocked_response_message'] ?? 'Access Denied';
+        } else {
+            $code = $this->config['blocked_response_code'] ?? 403;
+            $message = $this->config['blocked_response_message'] ?? 'Access Denied';
+        }
 
         return Http\Response::json($response, $message, $code);
     }
