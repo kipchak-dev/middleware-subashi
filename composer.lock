@@ -142,11 +142,11 @@
         },
         {
             "name": "kipchak/core",
-            "version": "2.19",
+            "version": "2.20",
             "source": {
                 "type": "git",
                 "url": "https://1x.ax/mamluk/kipchak/core",
-                "reference": "014246f4d3b7e52f8dcceb1bffdf635b2c2daf69"
+                "reference": "4ea97c539d87734b1009ee1bdeee7149f5d39713"
             },
             "require": {
                 "cuyz/valinor": "^1.17",
@@ -175,15 +175,15 @@
                 "apis",
                 "microservices"
             ],
-            "time": "2026-05-07T11:10:17+00:00"
+            "time": "2026-05-24T05:55:10+00:00"
         },
         {
             "name": "kipchak/driver-config",
-            "version": "1.15",
+            "version": "1.16",
             "source": {
                 "type": "git",
                 "url": "https://1x.ax/mamluk/kipchak/drivers/config",
-                "reference": "462e1ab96356919ce9cee7773db005ae0c6fc942"
+                "reference": "a8325ef4e983c6c667b6f95963463cd414e34167"
             },
             "require": {
                 "kipchak/core": "^2"
@@ -207,15 +207,15 @@
                 "http",
                 "microservices"
             ],
-            "time": "2026-05-07T11:10:30+00:00"
+            "time": "2026-05-24T05:55:24+00:00"
         },
         {
             "name": "kipchak/driver-filecache",
-            "version": "1.14",
+            "version": "1.15",
             "source": {
                 "type": "git",
                 "url": "https://1x.ax/mamluk/kipchak/drivers/filecache",
-                "reference": "dfec2f0b81f5fc3b4463bef7dbb07fa37c71a544"
+                "reference": "3462905e2344167059b69ee2541e9e64cae46f87"
             },
             "require": {
                 "kipchak/core": "^2",
@@ -240,15 +240,15 @@
                 "http",
                 "microservices"
             ],
-            "time": "2026-05-07T11:10:59+00:00"
+            "time": "2026-05-24T05:55:53+00:00"
         },
         {
             "name": "kipchak/driver-logger",
-            "version": "1.18",
+            "version": "1.20",
             "source": {
                 "type": "git",
                 "url": "https://1x.ax/mamluk/kipchak/drivers/logger",
-                "reference": "44765ac71aac013ae0ce9ac1129a1cbb3982eb15"
+                "reference": "4a0db820effaf2711c369ebbac38fd286271961c"
             },
             "require": {
                 "kipchak/core": "^2",
@@ -274,15 +274,15 @@
                 "http",
                 "microservices"
             ],
-            "time": "2026-05-07T14:39:33+00:00"
+            "time": "2026-05-24T06:06:09+00:00"
         },
         {
             "name": "kipchak/driver-memcached",
-            "version": "1.17",
+            "version": "1.19",
             "source": {
                 "type": "git",
                 "url": "https://1x.ax/mamluk/kipchak/drivers/memcached",
-                "reference": "a19b726c5580270bc8b9c7334dfb1ba445ae9c78"
+                "reference": "e1253a9ce01f0289b75b7df38747f789d5a5fd16"
             },
             "require": {
                 "ext-memcached": "*",
@@ -308,7 +308,7 @@
                 "memcached",
                 "microservices"
             ],
-            "time": "2026-05-07T14:40:05+00:00"
+            "time": "2026-05-24T06:06:45+00:00"
         },
         {
             "name": "laravel/serializable-closure",
@@ -1306,16 +1306,16 @@
         },
         {
             "name": "slim/slim",
-            "version": "4.15.1",
+            "version": "4.15.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/slimphp/Slim.git",
-                "reference": "887893516557506f254d950425ce7f5387a26970"
+                "reference": "e12cb05ca2a14e8f459d019e87a31dc915b80470"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/slimphp/Slim/zipball/887893516557506f254d950425ce7f5387a26970",
-                "reference": "887893516557506f254d950425ce7f5387a26970",
+                "url": "https://api.github.com/repos/slimphp/Slim/zipball/e12cb05ca2a14e8f459d019e87a31dc915b80470",
+                "reference": "e12cb05ca2a14e8f459d019e87a31dc915b80470",
                 "shasum": ""
             },
             "require": {
@@ -1418,20 +1418,20 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2025-11-21T12:23:44+00:00"
+            "time": "2026-05-22T08:00:12+00:00"
         },
         {
             "name": "symfony/cache",
-            "version": "v8.0.10",
+            "version": "v8.0.12",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/cache.git",
-                "reference": "8ff96cde73684bfa32b702f5cff1eb83b1fac429"
+                "reference": "11dc0681506ff07ca80bfb4cbf84c601c3cf04f7"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/cache/zipball/8ff96cde73684bfa32b702f5cff1eb83b1fac429",
-                "reference": "8ff96cde73684bfa32b702f5cff1eb83b1fac429",
+                "url": "https://api.github.com/repos/symfony/cache/zipball/11dc0681506ff07ca80bfb4cbf84c601c3cf04f7",
+                "reference": "11dc0681506ff07ca80bfb4cbf84c601c3cf04f7",
                 "shasum": ""
             },
             "require": {
@@ -1497,7 +1497,7 @@
                 "psr6"
             ],
             "support": {
-                "source": "https://github.com/symfony/cache/tree/v8.0.10"
+                "source": "https://github.com/symfony/cache/tree/v8.0.12"
             },
             "funding": [
                 {
@@ -1517,7 +1517,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-05-05T08:24:00+00:00"
+            "time": "2026-05-20T07:22:03+00:00"
         },
         {
             "name": "symfony/cache-contracts",
@@ -1990,16 +1990,16 @@
         },
         {
             "name": "symfony/yaml",
-            "version": "v8.0.10",
+            "version": "v8.0.12",
             "source": {
                 "type": "git",
                 "url": "https://github.com/symfony/yaml.git",
-                "reference": "aa9ee60c41d9b20a2468c41ff0a32e2a7405ac05"
+                "reference": "2a36f4b8405d41fa31799b06874dbd45c1b16c30"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/symfony/yaml/zipball/aa9ee60c41d9b20a2468c41ff0a32e2a7405ac05",
-                "reference": "aa9ee60c41d9b20a2468c41ff0a32e2a7405ac05",
+                "url": "https://api.github.com/repos/symfony/yaml/zipball/2a36f4b8405d41fa31799b06874dbd45c1b16c30",
+                "reference": "2a36f4b8405d41fa31799b06874dbd45c1b16c30",
                 "shasum": ""
             },
             "require": {
@@ -2041,7 +2041,7 @@
             "description": "Loads and dumps YAML files",
             "homepage": "https://symfony.com",
             "support": {
-                "source": "https://github.com/symfony/yaml/tree/v8.0.10"
+                "source": "https://github.com/symfony/yaml/tree/v8.0.12"
             },
             "funding": [
                 {
@@ -2061,7 +2061,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-05-05T08:10:04+00:00"
+            "time": "2026-05-20T07:22:03+00:00"
         },
         {
             "name": "zircote/swagger-php",
