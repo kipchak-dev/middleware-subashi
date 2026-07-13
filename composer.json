@@ -25,7 +25,7 @@
     "minimum-stability": "dev",
     "prefer-stable": true,
     "require": {
-        "kipchak/core": "^2",
+        "kipchak/core": "^2 || ^3",
         "kipchak/driver-config": "^1",
         "kipchak/driver-logger": "^1",
         "kipchak/driver-memcached": "^1",
