@@ -18,6 +18,22 @@ Then just ensure you have appropriate settings configured in `kipchak.subashi.ph
 
 For a sample, please see: https://1x.ax/mamluk/kipchak/starter/~files/master/config/kipchak.subashi.php.
 
+## Tests
+
+```bash
+composer install
+./vendor/bin/phpunit
+```
+
+The `Firewall` reads its config and logger from the container in its constructor and does its work in private
+methods, so the tests build one without invoking the constructor and reach the internals by reflection
+(see `tests/Unit/TestCase.php`). That keeps them pointed at the real code rather than a
+refactored-for-testing copy of it.
+
+`SampleConfigRulesTest` is the one worth knowing about: it loads the rules that actually ship in
+`sample.config.php` and fires realistic attack requests at them, then checks the same rules do **not** match
+ordinary API traffic. If a shipped rule stops covering what its name claims, that test fails.
+
 ## What is a Kipchak Middleware?
 
 Kipchak Middleware is a standard PHP PSR-15 middleware.

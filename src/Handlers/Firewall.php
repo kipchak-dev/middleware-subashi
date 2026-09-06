@@ -63,7 +63,7 @@ class Firewall
         // Check blacklist - if matched, block the request
         $blacklistResult = $this->checkBlacklist($request);
         if ($blacklistResult) {
-            return $this->blockRequest($blacklistResult);
+            return $this->blockRequest($blacklistResult, $request);
         }
 
         // Check rate limiting
@@ -83,6 +83,11 @@ class Firewall
 
         foreach ($rules as $rule) {
             if ($this->matchesRule($request, $rule)) {
+                $this->logger->debug('Subashi: request whitelisted.', [
+                    'rule' => $rule['name'] ?? 'unnamed',
+                    'ip' => $this->clientIp($request),
+                    'path' => $request->getUri()->getPath(),
+                ]);
                 return true;
             }
         }
@@ -102,6 +107,7 @@ class Firewall
                 // Return rule details for custom response
                 return [
                     'matched' => true,
+                    'name' => $rule['name'] ?? 'unnamed',
                     'response_code' => $rule['response_code'] ?? null,
                     'response_message' => $rule['response_message'] ?? null,
                 ];
@@ -176,10 +182,32 @@ class Firewall
             case 'path':
                 return $request->getUri()->getPath();
 
+            case 'query':
+                // The whole query string, decoded once, so rules can be written
+                // against `union select` rather than also having to spell
+                // `union%20select` and `union+select`. `query_param` remains the
+                // right choice when you know the parameter name.
+                $query = $request->getUri()->getQuery();
+                return $query === '' ? null : urldecode($query);
+
             case 'body':
                 $key = $condition['key'] ?? '';
-                $body = json_decode($request->getBody()->getContents(), true);
-                return $body[$key] ?? null;
+                $stream = $request->getBody();
+
+                // The firewall runs before the application, so it must leave
+                // the body exactly as it found it. getContents() reads from the
+                // current position and does not rewind, so without this a
+                // `body` rule hands the controller an empty request body.
+                if (!$stream->isSeekable()) {
+                    return null;
+                }
+
+                $stream->rewind();
+                $contents = $stream->getContents();
+                $stream->rewind();
+
+                $body = json_decode($contents, true);
+                return is_array($body) ? ($body[$key] ?? null) : null;
 
             default:
                 return null;
@@ -266,6 +294,13 @@ class Firewall
                 $this->logger->debug("Checking rate limit for key: {$key}. Limit: {$limit}, Window: {$window}");
 
                 if ($this->checkRateLimit($key, $limit, $window)) {
+                    $this->logger->warning('Subashi: request rate limited.', [
+                        'rule' => $rule['name'] ?? 'unnamed',
+                        'ip' => $this->clientIp($request),
+                        'path' => $request->getUri()->getPath(),
+                        'limit' => $limit,
+                        'window' => $window,
+                    ]);
                     return true;
                 }
             }
@@ -355,7 +390,7 @@ class Firewall
     /**
      * Return blocked response
      */
-    private function blockRequest(array|bool $ruleData = false): ResponseInterface
+    private function blockRequest(array|bool $ruleData = false, ?ServerRequestInterface $request = null): ResponseInterface
     {
         $response = new Response();
         $response = $response->withAddedHeader('X-Protected-By', 'Subashi by Mamluk');
@@ -369,7 +404,30 @@ class Firewall
             $message = $this->config['blocked_response_message'] ?? 'Access Denied';
         }
 
+        // A firewall that blocks silently is not much use after the fact. This
+        // is the one log line that says which rule fired and against whom.
+        $this->logger->warning('Subashi: request blocked.', [
+            'rule' => is_array($ruleData) ? ($ruleData['name'] ?? 'unnamed') : 'unnamed',
+            'ip' => $request ? $this->clientIp($request) : null,
+            'method' => $request?->getMethod(),
+            'path' => $request?->getUri()->getPath(),
+            'user_agent' => $request ? ($request->getHeader('User-Agent')[0] ?? null) : null,
+            'response_code' => $code,
+        ]);
+
         return Http\Response::json($response, $message, $code);
+    }
+
+    /**
+     * The address used for logging, matching what the `ip` condition sees.
+     */
+    private function clientIp(ServerRequestInterface $request): ?string
+    {
+        $serverParams = $request->getServerParams();
+
+        return $serverParams['REMOTE_ADDR'] ??
+            $serverParams['HTTP_X_FORWARDED_FOR'] ??
+            $serverParams['HTTP_CLIENT_IP'] ?? null;
     }
 
     /**

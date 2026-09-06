@@ -19,7 +19,8 @@
     },
     "autoload": {
         "psr-4": {
-            "Kipchak\\Middleware\\Subashi\\": "src/"
+            "Kipchak\\Middleware\\Subashi\\": "src/",
+            "Kipchak\\Middleware\\Subashi\\tests\\": "tests/"
         }
     },
     "minimum-stability": "dev",
@@ -30,5 +31,8 @@
         "kipchak/driver-logger": "^1",
         "kipchak/driver-memcached": "^1",
         "kipchak/driver-filecache": "^1"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12"
     }
 }

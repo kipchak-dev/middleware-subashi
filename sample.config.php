@@ -8,7 +8,6 @@
 return [
     // Global settings
     'enabled' => true,
-    'default_action' => 'allow',  // allow or block
     'blocked_response_code' => 403,
     'blocked_response_message' => 'Access Denied',
 
@@ -35,7 +34,6 @@ return [
                     ],
                 ],
             ],
-            'action' => 'allow',
         ],
         [
             'name' => 'Whitelist API keys',
@@ -50,12 +48,16 @@ return [
                     ],
                 ],
             ],
-            'action' => 'allow',
         ],
     ],
 
     // Blacklist rules - block if ALL conditions in a rule match
     // Each rule can optionally specify 'response_code' and 'response_message' to override defaults
+    //
+    // The list a rule sits in determines the outcome: everything in 'whitelist'
+    // is allowed, everything in 'blacklist' is blocked. There is no per-rule
+    // action override. 'name' is what gets logged when a rule matches, so make
+    // it something you would want to read in an alert.
     'blacklist' => [
         // ============================================
         // OWASP TOP 10 SECURITY RULES
@@ -71,14 +73,13 @@ return [
                     'value' => '/\\.\\.\\/|\\.\\.\\\\|%2e%2e%2f|%2e%2e%5c/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 403,
             'response_message' => 'Path traversal attempt detected',
         ],
 
         // OWASP A03:2021 - Injection
         [
-            'name' => 'OWASP A03: SQL Injection in Query Params',
+            'name' => 'OWASP A03: SQL Injection in Path',
             'conditions' => [
                 [
                     'type' => 'path',
@@ -86,7 +87,6 @@ return [
                     'value' => '/(union.*select|select.*from|insert.*into|delete.*from|drop.*table|update.*set|exec.*xp_|execute.*sp_)/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 403,
             'response_message' => 'SQL injection attempt detected',
         ],
@@ -99,7 +99,6 @@ return [
                     'value' => '/(\||;|`|\$\(|<\(|>\(|&&|\\n|\\r)/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 403,
             'response_message' => 'Command injection attempt detected',
         ],
@@ -112,7 +111,6 @@ return [
                     'value' => '/(\*\)|\(\||\)\(|%2a%29|%28%7c|%29%28)/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 403,
             'response_message' => 'LDAP injection attempt detected',
         ],
@@ -125,14 +123,13 @@ return [
                     'value' => '/(\\[|\\]|or\\s+|and\\s+|node\\(\\)|text\\(\\)|parent::|child::)/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 403,
             'response_message' => 'XPath injection attempt detected',
         ],
 
         // OWASP A03:2021 - Cross-Site Scripting (XSS)
         [
-            'name' => 'OWASP A03: XSS in Query Parameters',
+            'name' => 'OWASP A03: XSS in Path',
             'conditions' => [
                 [
                     'type' => 'path',
@@ -140,9 +137,49 @@ return [
                     'value' => '/(<script|javascript:|onerror=|onload=|<iframe|<object|<embed|eval\\()/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 403,
             'response_message' => 'XSS attempt detected',
+        ],
+
+        // The rules above inspect the path. These inspect the query string,
+        // which is where injection and XSS payloads normally arrive. The
+        // `query` condition matches against the whole query string, decoded
+        // once, so patterns can be written in plain form.
+        [
+            'name' => 'OWASP A03: SQL Injection in Query String',
+            'conditions' => [
+                [
+                    'type' => 'query',
+                    'operator' => 'regex',
+                    'value' => '/(union.*select|select.*from|insert.*into|delete.*from|drop.*table|update.*set|exec.*xp_|execute.*sp_)/i',
+                ],
+            ],
+            'response_code' => 403,
+            'response_message' => 'SQL injection attempt detected',
+        ],
+        [
+            'name' => 'OWASP A03: XSS in Query String',
+            'conditions' => [
+                [
+                    'type' => 'query',
+                    'operator' => 'regex',
+                    'value' => '/(<script|javascript:|onerror=|onload=|<iframe|<object|<embed|eval\\()/i',
+                ],
+            ],
+            'response_code' => 403,
+            'response_message' => 'XSS attempt detected',
+        ],
+        [
+            'name' => 'OWASP A10: SSRF in Query String',
+            'conditions' => [
+                [
+                    'type' => 'query',
+                    'operator' => 'regex',
+                    'value' => '/(localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0|\\[::1\\]|169\\.254\\.|file:\/\/|dict:\/\/|gopher:\/\/)/i',
+                ],
+            ],
+            'response_code' => 400,
+            'response_message' => 'SSRF attempt detected',
         ],
 
         // OWASP A05:2021 - Security Misconfiguration
@@ -155,7 +192,6 @@ return [
                     'value' => '/(\\.env|\\.git|\\.ssh|wp-config\\.php|config\\.php|web\\.config|\\.htaccess|\\.htpasswd|passwd|shadow)/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 404,
             'response_message' => 'Not Found',
         ],
@@ -171,7 +207,6 @@ return [
                     'value' => '/(nikto|sqlmap|nmap|masscan|acunetix|nessus|openvas|metasploit)/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 403,
             'response_message' => 'Security scanner detected',
         ],
@@ -186,7 +221,6 @@ return [
                     'value' => '/(%00|\\x00|\\0)/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 400,
             'response_message' => 'Null byte injection detected',
         ],
@@ -201,14 +235,13 @@ return [
                     'value' => '/(%0d|%0a|\\r|\\n|%5cn|%5cr)/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 400,
             'response_message' => 'Log injection attempt detected',
         ],
 
         // OWASP A10:2021 - Server-Side Request Forgery (SSRF)
         [
-            'name' => 'OWASP A10: SSRF via URL Parameters',
+            'name' => 'OWASP A10: SSRF in Path',
             'conditions' => [
                 [
                     'type' => 'path',
@@ -216,7 +249,6 @@ return [
                     'value' => '/(localhost|127\\.0\\.0\\.1|0\\.0\\.0\\.0|\\[::1\\]|169\\.254\\.|file:\/\/|dict:\/\/|gopher:\/\/)/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 400,
             'response_message' => 'SSRF attempt detected',
         ],
@@ -231,7 +263,6 @@ return [
                     'value' => '/(http:\/\/|https:\/\/|ftp:\/\/|php:\/\/|data:\/\/|expect:\/\/|input:\/\/)/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 400,
             'response_message' => 'Remote file inclusion detected',
         ],
@@ -244,7 +275,6 @@ return [
                     'value' => '/(<!DOCTYPE|<!ENTITY|SYSTEM|PUBLIC)/i',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 400,
             'response_message' => 'XXE attack detected',
         ],
@@ -269,7 +299,6 @@ return [
                     'value' => 'SomeCountry',
                 ],
             ],
-            'action' => 'block',
             // Uses default response_code and response_message
         ],
         [
@@ -282,7 +311,6 @@ return [
                     'value' => 'Dart/3.5 (dart:io)',
                 ],
             ],
-            'action' => 'block',
             'response_code' => 418,
             'response_message' => 'Unsupported client',
         ],
@@ -296,7 +324,6 @@ return [
                     'value' => '/(bot|crawler|scraper|scanner)/i',
                 ],
             ],
-            'action' => 'block',
         ],
         [
             'name' => 'Block malicious IPs',
@@ -310,7 +337,6 @@ return [
                     ],
                 ],
             ],
-            'action' => 'block',
         ],
     ],
 
@@ -377,7 +403,8 @@ return [
      *
      * Supported condition types:
      * - header: HTTP header
-     * - query_param: URL query parameter
+     * - query_param: A single named URL query parameter
+     * - query: The whole query string, decoded once
      * - ip: Client IP address
      * - method: HTTP method
      * - path: URL path
