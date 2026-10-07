@@ -16,8 +16,15 @@ return [
         'enabled' => false,
         'default_limit' => 3,  // requests per window
         'default_window' => 5,  // seconds
-        'store' => 'memcached', // memcached or file
+        // Where counters are kept: 'memcached' or 'valkey' (atomic, shared by every host using the pool), or
+        // 'file' (one host only). Valkey needs the Enterprise kipchak/driver-valkey.
+        'store' => 'memcached',
         'memcached_pool' => 'cache', // Only used if store is memcached
+        'valkey_pool' => 'cache', // Only used if store is valkey
+        // When the store cannot be reached: true allows requests, false refuses them with a 503.
+        'fail_open' => true,
+        // Add RateLimit-Policy and RateLimit headers (IETF draft) to responses. Retry-After is always sent on a 429.
+        'headers' => false,
     ],
 
     // Whitelist rules - bypass all other checks if conditions match

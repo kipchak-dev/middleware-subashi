@@ -52,6 +52,20 @@ class OperatorsTest extends TestCase
             'lte on equal' => [5, 'lte', ['value' => 5], true],
 
             'unknown operator never matches' => ['x', 'nonsense', ['value' => 'x'], false],
+
+            // Request values are not always strings: ?q[]=x arrives as an array.
+            'contains on an array is false' => [['union'], 'contains', ['value' => 'union'], false],
+            'not_contains on an array is true' => [['union'], 'not_contains', ['value' => 'union'], true],
+            'regex on an array is false' => [['<script>'], 'regex', ['value' => '/script/'], false],
+            'contains on a number compares its digits' => [2024, 'contains', ['value' => '02'], true],
+            'contains finds "0"' => ['0', 'contains', ['value' => '0'], true],
+            'contains with no expected value is false' => ['abc', 'contains', [], false],
+            'an invalid pattern never matches' => ['anything', 'regex', ['value' => '/unclosed('], false],
+            'in_list with a non-list never matches' => ['a', 'in_list', ['values' => 'a'], false],
+            // e.g. a list built from env() values, one of them unset
+            'an absent value is not in a list containing an empty string' => [null, 'in_list', ['values' => ['', 'k1']], false],
+            'an absent value is not in a list containing 0' => [null, 'in_list', ['values' => [0]], false],
+            'an absent value satisfies not_in_list even with an empty string listed' => [null, 'not_in_list', ['values' => ['']], true],
         ];
     }
 

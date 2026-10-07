@@ -4,397 +4,246 @@ namespace Kipchak\Middleware\Subashi\Handlers;
 
 use Kipchak\Core\Components\Http;
 use Kipchak\Driver\Config\Config;
-use Kipchak\Driver\Filecache\Filecache;
-use Kipchak\Driver\Memcached\Memcached;
+use Kipchak\Driver\Logger\Logger;
+use Kipchak\Middleware\Subashi\Conditions\BodyCondition;
+use Kipchak\Middleware\Subashi\Conditions\ConditionTypeHandler;
+use Kipchak\Middleware\Subashi\Conditions\HeaderCondition;
+use Kipchak\Middleware\Subashi\Conditions\IpCondition;
+use Kipchak\Middleware\Subashi\Conditions\MethodCondition;
+use Kipchak\Middleware\Subashi\Conditions\PathCondition;
+use Kipchak\Middleware\Subashi\Conditions\QueryCondition;
+use Kipchak\Middleware\Subashi\Conditions\QueryParamCondition;
+use Kipchak\Middleware\Subashi\Network\ClientIp;
+use Kipchak\Middleware\Subashi\Network\RemoteAddress;
+use Kipchak\Middleware\Subashi\RateLimit\CounterStore;
+use Kipchak\Middleware\Subashi\RateLimit\CounterStoreFactory;
+use Kipchak\Middleware\Subashi\RateLimit\CounterStoreUnavailable;
+use Kipchak\Middleware\Subashi\RateLimit\Decision;
+use Kipchak\Middleware\Subashi\RateLimit\RateLimiter;
+use Kipchak\Middleware\Subashi\Rules\Operators;
+use Kipchak\Middleware\Subashi\Rules\RuleMatcher;
+use Psr\Clock\ClockInterface;
+use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
+use Psr\Log\LoggerInterface;
 use Slim\Psr7\Response;
-use Symfony\Component\Cache\Adapter\AdapterInterface;
-use Kipchak\Driver\Logger\Logger;
-use Monolog\Logger as MonoLogger;
 
-class Firewall
+/**
+ * The Subashi web application firewall: whitelist, then blacklist, then rate limits.
+ *
+ * Subashi Pro extends this class, overriding the config file, the client IP resolution, the condition types and
+ * the request interception hook, so both editions share one rules engine and one rate limiter.
+ *
+ * Safe in FrankenPHP worker mode: everything held here is built once from config and never changes per request.
+ */
+class Firewall implements MiddlewareInterface
 {
-    private array $config;
-    private ?AdapterInterface $cache = null;
+    /** The config file this edition reads. */
+    protected const CONFIG_KEY = 'kipchak.subashi';
 
-    private MonoLogger $logger;
+    /** Used in log messages and the X-Protected-By header. */
+    protected const PRODUCT = 'Subashi';
 
-    public function __construct()
+    protected array $config;
+    protected LoggerInterface $logger;
+    protected ClientIp $clientIp;
+    protected RuleMatcher $rules;
+    protected RateLimiter $rateLimiter;
+
+    /**
+     * @param ContainerInterface|null $container Accepted for compatibility with `new Firewall($container)`; unused.
+     * @param array|null $config Defaults to this edition's config file.
+     * @param CounterStore|null $store Defaults to the store named by rate_limiting.store, built on first use.
+     */
+    public function __construct(
+        ?ContainerInterface $container = null,
+        ?array $config = null,
+        ?LoggerInterface $logger = null,
+        ?CounterStore $store = null,
+        ?ClockInterface $clock = null,
+    ) {
+        $this->config = $config ?? Config::get(static::CONFIG_KEY);
+        $this->logger = $logger ?? Logger::get();
+        $this->clientIp = $this->createClientIp();
+        $this->rules = new RuleMatcher($this->conditionHandlers());
+        $this->rateLimiter = new RateLimiter(
+            $this->config,
+            $this->rules,
+            $this->clientIp,
+            $store !== null
+                ? static fn (): CounterStore => $store
+                : fn (): CounterStore => CounterStoreFactory::create($this->config['rate_limiting'] ?? [], $this->logger),
+            $this->logger,
+            static::PRODUCT,
+            $clock,
+        );
+    }
+
+    protected function createClientIp(): ClientIp
     {
-        // Load configuration from container
-        $this->config = Config::get('kipchak.subashi') ?? [];
-        $this->logger = Logger::get();
-
-        // Initialize cache if rate limiting is enabled
-        if ($this->config['rate_limiting']['enabled']) {
-            $this->logger->debug('Rate limiting is enabled.');
-            if ($this->config['rate_limiting']['store'] === 'memcached') {
-                $this->logger->debug('Using Memcached as rate limiting cache store.');
-                $this->cache = Memcached::get($this->config['rate_limiting']['memcached_pool']);
-            } else {
-                $this->logger->debug('Using Filecache as rate limiting cache store.');
-                $this->cache = Filecache::get();
-            }
-        }
+        return new RemoteAddress();
     }
 
     /**
-     * WAF middleware invokable class
-     *
-     * @param ServerRequestInterface $request PSR-7 request
-     * @param RequestHandlerInterface $handler PSR-15 request handler
-     *
-     * @return ResponseInterface
+     * @return list<ConditionTypeHandler>
      */
+    protected function conditionHandlers(): array
+    {
+        return [
+            new HeaderCondition(),
+            new QueryParamCondition(),
+            new QueryCondition(),
+            new IpCondition($this->clientIp),
+            new MethodCondition(),
+            new PathCondition(),
+            new BodyCondition(),
+        ];
+    }
+
+    /**
+     * Answers a request before any rule runs, even when the firewall is disabled. Subashi Pro uses it for its
+     * diagnostics endpoint.
+     */
+    protected function intercept(ServerRequestInterface $request): ?ResponseInterface
+    {
+        return null;
+    }
+
     public function __invoke(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        // Return early if WAF is disabled
+        return $this->process($request, $handler);
+    }
+
+    public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
+    {
+        $intercepted = $this->intercept($request);
+        if ($intercepted !== null) {
+            return $intercepted;
+        }
+
         if (!($this->config['enabled'] ?? true)) {
             return $handler->handle($request);
         }
 
-        // Check whitelist first - if matched, bypass all other checks
+        // Whitelisted requests bypass every other check, rate limits included.
         if ($this->checkWhitelist($request)) {
             return $handler->handle($request);
         }
 
-        // Check blacklist - if matched, block the request
         $blacklistResult = $this->checkBlacklist($request);
         if ($blacklistResult) {
             return $this->blockRequest($blacklistResult, $request);
         }
 
-        // Check rate limiting
-        if ($this->isRateLimited($request)) {
-            return $this->rateLimitResponse();
+        try {
+            $decision = $this->rateLimiter->check($request);
+        } catch (CounterStoreUnavailable) {
+            return $this->unavailableResponse();
         }
 
-        return $handler->handle($request);
+        if ($decision !== null && !$decision->allowed) {
+            return $this->rateLimitResponse($decision);
+        }
+
+        $response = $handler->handle($request);
+
+        return $decision !== null && $this->rateLimiter->sendsHeaders()
+            ? $this->withRateLimitHeaders($response, $decision)
+            : $response;
     }
 
     /**
      * Check if request matches whitelist rules
      */
-    private function checkWhitelist(ServerRequestInterface $request): bool
+    protected function checkWhitelist(ServerRequestInterface $request): bool
     {
-        $rules = $this->config['whitelist'] ?? [];
-
-        foreach ($rules as $rule) {
-            if ($this->matchesRule($request, $rule)) {
-                $this->logger->debug('Subashi: request whitelisted.', [
-                    'rule' => $rule['name'] ?? 'unnamed',
-                    'ip' => $this->clientIp($request),
-                    'path' => $request->getUri()->getPath(),
-                ]);
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Check if request matches blacklist rules
-     */
-    private function checkBlacklist(ServerRequestInterface $request): bool|array
-    {
-        $rules = $this->config['blacklist'] ?? [];
-
-        foreach ($rules as $rule) {
-            if ($this->matchesRule($request, $rule)) {
-                // Return rule details for custom response
-                return [
-                    'matched' => true,
-                    'name' => $rule['name'] ?? 'unnamed',
-                    'response_code' => $rule['response_code'] ?? null,
-                    'response_message' => $rule['response_message'] ?? null,
-                ];
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Check if a request matches a rule (all conditions must match)
-     */
-    private function matchesRule(ServerRequestInterface $request, array $rule): bool
-    {
-        $conditions = $rule['conditions'] ?? [];
-
-        // If no conditions, rule doesn't match
-        if (empty($conditions)) {
+        $rule = $this->rules->firstMatch($request, $this->config['whitelist'] ?? []);
+        if ($rule === null) {
             return false;
         }
 
-        // All conditions must match for the rule to match
-        foreach ($conditions as $condition) {
-            if (!$this->matchesCondition($request, $condition)) {
-                return false;
-            }
-        }
+        $this->logger->debug(static::PRODUCT . ': request whitelisted.', [
+            'rule' => $rule['name'] ?? 'unnamed',
+            'ip' => $this->clientIp->resolve($request),
+            'path' => $request->getUri()->getPath(),
+        ]);
 
         return true;
     }
 
     /**
-     * Check if a request matches a single condition
+     * Check if request matches blacklist rules
      */
-    private function matchesCondition(ServerRequestInterface $request, array $condition): bool
+    protected function checkBlacklist(ServerRequestInterface $request): bool|array
     {
-        $type = $condition['type'] ?? '';
-        $operator = $condition['operator'] ?? 'equals';
+        $rule = $this->rules->firstMatch($request, $this->config['blacklist'] ?? []);
+        if ($rule === null) {
+            return false;
+        }
 
-        $actualValue = $this->extractValue($request, $condition);
+        // Rule details for a custom response
+        return [
+            'matched' => true,
+            'name' => $rule['name'] ?? 'unnamed',
+            'response_code' => $rule['response_code'] ?? null,
+            'response_message' => $rule['response_message'] ?? null,
+        ];
+    }
 
-        return $this->compareValues($actualValue, $condition, $operator);
+    /**
+     * Check if a request matches a rule (all conditions must match)
+     */
+    protected function matchesRule(ServerRequestInterface $request, array $rule): bool
+    {
+        return $this->rules->matches($request, $rule);
     }
 
     /**
      * Extract value from request based on condition type
      */
-    private function extractValue(ServerRequestInterface $request, array $condition): mixed
+    protected function extractValue(ServerRequestInterface $request, array $condition): mixed
     {
-        $type = $condition['type'] ?? '';
-
-        switch ($type) {
-            case 'header':
-                $key = $condition['key'] ?? '';
-                $headers = $request->getHeader($key);
-                return !empty($headers) ? $headers[0] : null;
-
-            case 'query_param':
-                $key = $condition['key'] ?? '';
-                $params = $request->getQueryParams();
-                return $params[$key] ?? null;
-
-            case 'ip':
-                $serverParams = $request->getServerParams();
-                return $serverParams['REMOTE_ADDR'] ??
-                    $serverParams['HTTP_X_FORWARDED_FOR'] ??
-                    $serverParams['HTTP_CLIENT_IP'] ?? null;
-
-            case 'method':
-                return $request->getMethod();
-
-            case 'path':
-                return $request->getUri()->getPath();
-
-            case 'query':
-                // The whole query string, decoded once, so rules can be written
-                // against `union select` rather than also having to spell
-                // `union%20select` and `union+select`. `query_param` remains the
-                // right choice when you know the parameter name.
-                $query = $request->getUri()->getQuery();
-                return $query === '' ? null : urldecode($query);
-
-            case 'body':
-                $key = $condition['key'] ?? '';
-                $stream = $request->getBody();
-
-                // The firewall runs before the application, so it must leave
-                // the body exactly as it found it. getContents() reads from the
-                // current position and does not rewind, so without this a
-                // `body` rule hands the controller an empty request body.
-                if (!$stream->isSeekable()) {
-                    return null;
-                }
-
-                $stream->rewind();
-                $contents = $stream->getContents();
-                $stream->rewind();
-
-                $body = json_decode($contents, true);
-                return is_array($body) ? ($body[$key] ?? null) : null;
-
-            default:
-                return null;
-        }
+        return $this->rules->extract($request, $condition);
     }
 
     /**
      * Compare values based on operator
      */
-    private function compareValues(mixed $actualValue, array $condition, string $operator): bool
+    protected function compareValues(mixed $actualValue, array $condition, string $operator): bool
     {
-        $expectedValue = $condition['value'] ?? null;
-        $expectedValues = $condition['values'] ?? [];
-
-        switch ($operator) {
-            case 'equals':
-                return $actualValue === $expectedValue;
-
-            case 'not_equals':
-                return $actualValue !== $expectedValue;
-
-            case 'contains':
-                return $actualValue && str_contains($actualValue, $expectedValue);
-
-            case 'not_contains':
-                return !$actualValue || !str_contains($actualValue, $expectedValue);
-
-            case 'regex':
-                return $actualValue && preg_match($expectedValue, $actualValue);
-
-            case 'in_list':
-                return in_array($actualValue, $expectedValues);
-
-            case 'not_in_list':
-                return !in_array($actualValue, $expectedValues);
-
-            case 'exists':
-                return $actualValue !== null;
-
-            case 'not_exists':
-                return $actualValue === null;
-
-            case 'gt':
-                return $actualValue > $expectedValue;
-
-            case 'lt':
-                return $actualValue < $expectedValue;
-
-            case 'gte':
-                return $actualValue >= $expectedValue;
-
-            case 'lte':
-                return $actualValue <= $expectedValue;
-
-            default:
-                return false;
-        }
+        return Operators::compare($actualValue, $condition, $operator);
     }
 
     /**
      * Check if request is rate limited
      */
-    private function isRateLimited(ServerRequestInterface $request): bool
+    protected function isRateLimited(ServerRequestInterface $request): bool
     {
-        if (!$this->cache || !($this->config['rate_limiting']['enabled'])) {
-            return false;
+        try {
+            $decision = $this->rateLimiter->check($request);
+        } catch (CounterStoreUnavailable) {
+            return true;
         }
 
-        $rules = $this->config['rate_limit_rules'] ?? [];
-
-        // Find matching rate limit rule
-        foreach ($rules as $rule) {
-            $conditions = $rule['conditions'] ?? [];
-
-            // If no conditions or all conditions match, apply this rate limit
-            if (empty($conditions) || $this->matchesRule($request, $rule)) {
-                $rateLimitConfig = $rule['rate_limit'] ?? [];
-                $limit = $rateLimitConfig['limit'] ?? $this->config['rate_limiting']['default_limit'];
-                $window = $rateLimitConfig['window'] ?? $this->config['rate_limiting']['default_window'];
-                $keyPrefix = $rateLimitConfig['key_prefix'] ?? 'ratelimit';
-                $keySource = $rateLimitConfig['key_source'] ?? 'ip';
-
-                $key = $this->buildRateLimitKey($request, $keyPrefix, $keySource);
-                $this->logger->debug("Checking rate limit for key: {$key}. Limit: {$limit}, Window: {$window}");
-
-                if ($this->checkRateLimit($key, $limit, $window)) {
-                    $this->logger->warning('Subashi: request rate limited.', [
-                        'rule' => $rule['name'] ?? 'unnamed',
-                        'ip' => $this->clientIp($request),
-                        'path' => $request->getUri()->getPath(),
-                        'limit' => $limit,
-                        'window' => $window,
-                    ]);
-                    return true;
-                }
-            }
-        }
-
-        return false;
+        return $decision !== null && !$decision->allowed;
     }
 
     /**
      * Build rate limit cache key
      */
-    private function buildRateLimitKey(ServerRequestInterface $request, string $prefix, string $source): string
+    protected function buildRateLimitKey(ServerRequestInterface $request, string $prefix, string $source): string
     {
-        $identifier = '';
-
-        if ($source === 'ip') {
-            $serverParams = $request->getServerParams();
-            $identifier = $serverParams['REMOTE_ADDR'] ??
-                $serverParams['HTTP_X_FORWARDED_FOR'] ??
-                $serverParams['HTTP_CLIENT_IP'] ?? 'unknown';
-        } elseif (str_starts_with($source, 'header:')) {
-            $headerName = substr($source, 7);
-            $headers = $request->getHeader($headerName);
-            $identifier = !empty($headers) ? $headers[0] : 'unknown';
-        } elseif (str_starts_with($source, 'query:')) {
-            $paramName = substr($source, 6);
-            $params = $request->getQueryParams();
-            $identifier = $params[$paramName] ?? 'unknown';
-        }
-        // MD5 so that we don't have to worry about collisions or spaces in identifiers like 'user id: 123'
-        $identifier = md5($identifier);
-
-        return "waf_ratelimit_{$prefix}_{$identifier}";
-    }
-
-    /**
-     * Check rate limit using cache
-     */
-    private function checkRateLimit(string $key, int $limit, int $window): bool
-    {
-        try {
-            $cacheItem = $this->cache->getItem($key);
-
-            if ($cacheItem->isHit()) {
-                $this->logger->debug("Rate limit cache hit for key: {$key}");
-                $data = $cacheItem->get();
-                $count = $data['count'] ?? 0;
-                $windowStart = $data['window_start'] ?? time();
-                $this->logger->debug("Current count: {$count}");
-
-                // Check if we're still within the same window
-                $currentTime = time();
-                if (($currentTime - $windowStart) >= $window) {
-                    // Window has expired, start a new one
-                    $this->logger->debug("Rate limit window expired for key: {$key}, starting new window");
-                    $cacheItem->set(['count' => 1, 'window_start' => $currentTime]);
-                    $cacheItem->expiresAfter($window);
-                    $this->cache->save($cacheItem);
-                } else {
-                    // Still within the same window
-                    if ($count >= $limit) {
-                        $this->logger->debug("Rate limit exceeded for key: {$key}");
-                        return true; // Rate limited
-                    }
-
-                    $data['count'] = $count + 1;
-                    $remainingTtl = $window - ($currentTime - $windowStart);
-                    $cacheItem->set($data);
-                    $cacheItem->expiresAfter($remainingTtl);
-                    $this->cache->save($cacheItem);
-                }
-            } else {
-                $this->logger->debug("Rate limit cache miss for key: {$key}");
-                // First request in this window
-                $cacheItem->set(['count' => 1, 'window_start' => time()]);
-                $cacheItem->expiresAfter($window);
-                $this->cache->save($cacheItem);
-            }
-
-            return false;
-        } catch (\Exception $e) {
-            // If cache fails, allow the request (fail open)
-            return false;
-        }
+        return $this->rateLimiter->key($request, $prefix, $source);
     }
 
     /**
      * Return blocked response
      */
-    private function blockRequest(array|bool $ruleData = false, ?ServerRequestInterface $request = null): ResponseInterface
+    protected function blockRequest(array|bool $ruleData = false, ?ServerRequestInterface $request = null): ResponseInterface
     {
-        $response = new Response();
-        $response = $response->withAddedHeader('X-Protected-By', 'Subashi by Mamluk');
-
         // Use rule-specific response code/message if provided, otherwise use defaults
         if (is_array($ruleData)) {
             $code = $ruleData['response_code'] ?? $this->config['blocked_response_code'] ?? 403;
@@ -406,37 +255,57 @@ class Firewall
 
         // A firewall that blocks silently is not much use after the fact. This
         // is the one log line that says which rule fired and against whom.
-        $this->logger->warning('Subashi: request blocked.', [
+        $this->logger->warning(static::PRODUCT . ': request blocked.', [
             'rule' => is_array($ruleData) ? ($ruleData['name'] ?? 'unnamed') : 'unnamed',
-            'ip' => $request ? $this->clientIp($request) : null,
+            'ip' => $request ? $this->clientIp->resolve($request) : null,
             'method' => $request?->getMethod(),
             'path' => $request?->getUri()->getPath(),
             'user_agent' => $request ? ($request->getHeader('User-Agent')[0] ?? null) : null,
             'response_code' => $code,
         ]);
 
-        return Http\Response::json($response, $message, $code);
-    }
-
-    /**
-     * The address used for logging, matching what the `ip` condition sees.
-     */
-    private function clientIp(ServerRequestInterface $request): ?string
-    {
-        $serverParams = $request->getServerParams();
-
-        return $serverParams['REMOTE_ADDR'] ??
-            $serverParams['HTTP_X_FORWARDED_FOR'] ??
-            $serverParams['HTTP_CLIENT_IP'] ?? null;
+        return Http\Response::json($this->protectedResponse(), $message, $code);
     }
 
     /**
      * Return rate limit response
      */
-    private function rateLimitResponse(): ResponseInterface
+    protected function rateLimitResponse(?Decision $decision = null): ResponseInterface
     {
-        $response = new Response();
-        $response = $response->withAddedHeader('X-Protected-By', 'Subashi by Mamluk');
-        return Http\Response::json($response, 'Rate limit exceeded', 429);
+        $response = Http\Response::json($this->protectedResponse(), 'Rate limit exceeded', 429);
+        if ($decision === null) {
+            return $response;
+        }
+
+        $response = $response->withHeader('Retry-After', (string) $decision->retryAfter);
+
+        return $this->rateLimiter->sendsHeaders() ? $this->withRateLimitHeaders($response, $decision) : $response;
+    }
+
+    /**
+     * Returned when the rate limit store is down and rate_limiting.fail_open is false.
+     */
+    protected function unavailableResponse(): ResponseInterface
+    {
+        return Http\Response::json($this->protectedResponse(), 'Service temporarily unavailable', 503)
+            ->withHeader('Retry-After', '5');
+    }
+
+    /**
+     * The RateLimit-Policy and RateLimit fields of the IETF draft (draft-ietf-httpapi-ratelimit-headers), for the
+     * matching rule with the fewest requests remaining.
+     */
+    protected function withRateLimitHeaders(ResponseInterface $response, Decision $decision): ResponseInterface
+    {
+        $name = '"' . addcslashes($decision->rule, '"\\') . '"';
+
+        return $response
+            ->withHeader('RateLimit-Policy', "{$name};q={$decision->limit};w={$decision->window}")
+            ->withHeader('RateLimit', "{$name};r={$decision->remaining};t={$decision->resetAfter}");
+    }
+
+    protected function protectedResponse(): ResponseInterface
+    {
+        return (new Response())->withAddedHeader('X-Protected-By', static::PRODUCT . ' by Mamluk');
     }
 }

@@ -3,6 +3,7 @@
 namespace Kipchak\Middleware\Subashi\tests\Unit;
 
 use Kipchak\Middleware\Subashi\Handlers\Firewall;
+use Kipchak\Middleware\Subashi\RateLimit\LockedCacheCounterStore;
 use Kipchak\Middleware\Subashi\tests\Unit\Support\RequestFactoryTrait;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger;
@@ -10,12 +11,8 @@ use PHPUnit\Framework\TestCase as BaseTestCase;
 use Symfony\Component\Cache\Adapter\AdapterInterface;
 
 /**
- * The Firewall reads its config and logger from the container in its
- * constructor, and does all its work in private methods. Rather than stand up a
- * container for every test, these build the object without invoking the
- * constructor and inject what it needs, then reach the private methods by
- * reflection. It keeps the tests pointed at real behaviour instead of a
- * refactored-for-testing copy of it.
+ * Builds a real Firewall with the config, logger and counter store injected, and reaches its protected steps
+ * (checkBlacklist, isRateLimited, ...) by reflection, so each test pins one step of the real request path.
  */
 abstract class TestCase extends BaseTestCase
 {
@@ -30,19 +27,13 @@ abstract class TestCase extends BaseTestCase
 
     protected function firewall(array $config = [], ?AdapterInterface $cache = null): Firewall
     {
-        $firewall = (new \ReflectionClass(Firewall::class))->newInstanceWithoutConstructor();
-
-        $properties = [
-            'config' => $config,
-            'logger' => new Logger('test', [$this->logHandler]),
-            'cache' => $cache,
-        ];
-
-        foreach ($properties as $name => $value) {
-            (new \ReflectionProperty(Firewall::class, $name))->setValue($firewall, $value);
-        }
-
-        return $firewall;
+        // With no cache, the store named in config is built on first use; outside an API that fails, and the
+        // firewall fails open, as it does when a real store is down.
+        return new Firewall(
+            config: $config,
+            logger: new Logger('test', [$this->logHandler]),
+            store: $cache === null ? null : new LockedCacheCounterStore($cache, sys_get_temp_dir() . '/subashi-test-locks'),
+        );
     }
 
     protected function call(Firewall $firewall, string $method, ...$args): mixed
