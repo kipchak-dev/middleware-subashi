@@ -103,6 +103,26 @@ class FirewallTest extends TestCase
         $this->assertSame(200, $response->getStatusCode());
     }
 
+    public function testRefusalsCarryTheStatusesMiddlewareErrorUses(): void
+    {
+        $status = static fn (ResponseInterface $response): array => [$response->getStatusCode(), json_decode((string) $response->getBody(), true)['status']];
+
+        $firewall = $this->make(self::limited());
+        $request = $this->makeRequest(serverParams: ['REMOTE_ADDR' => '203.0.113.9']);
+        $this->handle($firewall, $request);
+        $this->handle($firewall, $request);
+        $this->assertSame([429, 'TOO_MANY_REQUESTS'], $status($this->handle($firewall, $request)));
+
+        $blocked = $this->make(['blacklist' => [
+            ['name' => 'SQLi', 'conditions' => [['type' => 'query_param', 'key' => 'q', 'operator' => 'contains', 'value' => 'union']]],
+        ]]);
+        $this->assertSame([403, 'INSUFFICIENT_PRIVILEGES'], $status($this->handle($blocked, $this->makeRequest(queryParams: ['q' => '1 union select']))));
+
+        // Control: what 1.38 and earlier wrote, through Response::json().
+        $label = static fn (int $code): string => json_decode((string) \Kipchak\Core\Components\Http\Response::json(new \Slim\Psr7\Response(), '', $code)->getBody(), true)['status'];
+        $this->assertSame(['TOO MANY REQUESTS', 'FORBIDDEN'], [$label(429), $label(403)]);
+    }
+
     public function testRateLimitedResponseCarriesRetryAfter(): void
     {
         $firewall = $this->make(self::limited());

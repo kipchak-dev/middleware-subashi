@@ -24,6 +24,14 @@ Full documentation, including rate limiting with each authentication middleware:
 Subashi Pro (Kipchak Enterprise) builds on this package: it uses the same rules engine and rate limiter and
 adds trusted-proxy client IP resolution, geolocation and ASN conditions, and diagnostics.
 
+## Upgrading to 1.39
+
+1.39 requires kipchak/core 3.18. Its refusals carry the `status` kipchak/middleware-error gives their code, from
+kipchak/core's `ErrorStatus`: a blocked request `INSUFFICIENT_PRIVILEGES` (403, the default `blocked_response_code`), a
+rate-limited one `TOO_MANY_REQUESTS` (429) and a counter store outage `SERVER_ERROR` (503), instead of `FORBIDDEN`,
+`TOO MANY REQUESTS` and `SERVICE UNAVAILABLE`. A different `blocked_response_code` is named the same way (404 is
+`RESOURCE_NOT_FOUND`). Subashi Pro inherits this.
+
 ## Upgrading to 1.31
 
 Configuration is unchanged; existing config files work as they are. Behaviour changes:

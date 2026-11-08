@@ -264,7 +264,7 @@ class Firewall implements MiddlewareInterface
             'response_code' => $code,
         ]);
 
-        return Http\Response::json($this->protectedResponse(), $message, $code);
+        return Http\Response::error($this->protectedResponse(), $message, $code);
     }
 
     /**
@@ -272,7 +272,7 @@ class Firewall implements MiddlewareInterface
      */
     protected function rateLimitResponse(?Decision $decision = null): ResponseInterface
     {
-        $response = Http\Response::json($this->protectedResponse(), 'Rate limit exceeded', 429);
+        $response = Http\Response::error($this->protectedResponse(), 'Rate limit exceeded', 429);
         if ($decision === null) {
             return $response;
         }
@@ -287,7 +287,7 @@ class Firewall implements MiddlewareInterface
      */
     protected function unavailableResponse(): ResponseInterface
     {
-        return Http\Response::json($this->protectedResponse(), 'Service temporarily unavailable', 503)
+        return Http\Response::error($this->protectedResponse(), 'Service temporarily unavailable', 503)
             ->withHeader('Retry-After', '5');
     }
 
