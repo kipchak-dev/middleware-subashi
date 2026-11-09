@@ -16,7 +16,7 @@ Install it via composer: `composer require kipchak/middleware-subashi`.
 
 Then just ensure you have appropriate settings configured in `kipchak.subashi.php` config file in the root of your project.
 
-For a sample, please see: https://1x.ax/mamluk/kipchak/starter/~files/master/config/kipchak.subashi.php.
+For a sample, please see: https://github.com/kipchak-dev/examples/blob/master/config/kipchak.subashi.php.
 
 Full documentation, including rate limiting with each authentication middleware:
 <https://kipchak.dev/docs/mw-subashi>
